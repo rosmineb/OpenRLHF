@@ -494,10 +494,11 @@ class NaiveExperienceMaker(ABC):
 
 
 class RemoteExperienceMaker(NaiveExperienceMaker):
-    def __init__(self, *args, vllm_engines: List = None, packing_samples=False, **kwargs):
+    def __init__(self, *args, vllm_engines: List = None, packing_samples=False, grammar=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.vllm_engines = vllm_engines
         self.packing_samples = packing_samples
+        self.grammar = grammar
 
         if self.custom_reward_func:
             self.custom_reward_func = ray.remote(self.custom_reward_func)
@@ -696,6 +697,7 @@ class RemoteExperienceMaker(NaiveExperienceMaker):
 
     def _generate_vllm(self, all_prompts: List[str], **kwargs) -> List[Samples]:
         from vllm import SamplingParams
+        from vllm.sampling_params import GuidedDecodingParams
 
         # round-robin load balance
         rank = torch.distributed.get_rank()
@@ -709,6 +711,11 @@ class RemoteExperienceMaker(NaiveExperienceMaker):
 
         args = self.strategy.args
 
+        if self.grammar:
+            guided_decoding_params = GuidedDecodingParams(grammar=self.grammar)
+        else:
+            guided_decoding_params = None
+
         sampling_params = SamplingParams(
             temperature=kwargs.get("temperature", 1.0),
             top_p=kwargs.get("top_p", 1.0),
@@ -717,8 +724,9 @@ class RemoteExperienceMaker(NaiveExperienceMaker):
             min_tokens=kwargs.get("min_new_tokens", 1),
             skip_special_tokens=kwargs.get("skip_special_tokens", False),
             include_stop_str_in_output=True,
+            guided_decoding=guided_decoding_params,
         )
-
+        print(f"-----------------------------------sampling_params: {sampling_params}--------------------------------")
         # Expand prompt list based on the number of samples per prompt
         all_prompts = sum([[prompt] * args.n_samples_per_prompt for prompt in all_prompts], [])
         all_prompt_token_ids = self.tokenize_fn(all_prompts, self.prompt_max_len, padding=False)["input_ids"]

@@ -62,7 +62,7 @@ class BasePPORole(DistributedTorchRayActor):
 
 @ray.remote(num_gpus=1)
 class ReferenceModelRayActor(BasePPORole):
-    def init_model_from_pretrained(self, strategy: DeepspeedStrategy, pretrain):
+    def init_model_from_pretrained(self, strategy: DeepspeedStrategy, pretrain, grammar=None):
         self._setup_distributed(strategy)
         model = Actor(
             pretrain,
@@ -164,6 +164,7 @@ class PPORayActorGroup:
         num_gpus_per_actor=1,
         resources: Dict[str, float] = None,
         num_resources_per_node: int = None,
+        grammar=None,
     ) -> None:
         self._num_nodes = num_nodes
         self._num_gpus_per_node = num_gpus_per_node
@@ -172,8 +173,8 @@ class PPORayActorGroup:
         # custom resources, see https://docs.ray.io/en/latest/ray-core/scheduling/resources.html
         self._resources = resources
         self._num_resources_per_node = num_resources_per_node
-
         self._initiate_actors(pg, num_gpus_per_actor)
+        self.grammar = grammar
 
     def _initiate_actors(self, pg, num_gpus_per_actor):
         world_size = self._num_nodes * self._num_gpus_per_node

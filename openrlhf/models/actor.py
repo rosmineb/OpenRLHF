@@ -45,10 +45,11 @@ class Actor(nn.Module):
         ds_config=None,
         device_map=None,
         packing_samples=False,
+        logits_processor=None,
         **kwargs,
     ) -> None:
         super().__init__()
-
+        self.logits_processor = logits_processor
         if isinstance(pretrain_or_model, str):
             attn_implementation = "flash_attention_2" if use_flash_attention_2 else "eager"
 
@@ -137,6 +138,8 @@ class Actor(nn.Module):
             "pad_token_id": kwargs.get("pad_token_id"),
             "min_new_tokens": kwargs.get("min_new_tokens", 1),
         }
+        if self.logits_processor:
+            generate_args["logits_processor"] = self.logits_processor
 
         if kwargs.get("max_new_tokens", None):
             generate_args["max_new_tokens"] = kwargs.get("max_new_tokens")

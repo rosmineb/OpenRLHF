@@ -2,6 +2,7 @@ import argparse
 from datetime import datetime
 from typing import List
 
+import lark
 import ray
 import torch
 from ray.util.placement_group import placement_group
@@ -154,11 +155,19 @@ def train(args):
     else:
         reward_models = None
 
+
+    if args.grammar_file:
+        with open(args.grammar_file, "r") as f:
+            grammar = f.read()
+        lark.Lark(grammar)
+    else:
+        grammar = None
+
     # init reference/reward/actor model
     refs = []
     if ref_model is not None:
         refs.extend(ref_model.async_init_model_from_pretrained(strategy, args.pretrain))
-    refs.extend(actor_model.async_init_model_from_pretrained(strategy, args.pretrain))
+    refs.extend(actor_model.async_init_model_from_pretrained(strategy, args.pretrain, grammar=grammar))
     if not args.remote_rm_url:
         for reward_model, reward_pretrain in zip(reward_models, reward_pretrains):
             refs.extend(reward_model.async_init_model_from_pretrained(strategy, reward_pretrain))
@@ -244,6 +253,7 @@ if __name__ == "__main__":
         default=0.9,
         help="vLLM gpu_memory_utilization",
     )
+    parser.add_argument("--grammar_file", type=str, default=None, help="grammar file for guided decoding")
 
     # Checkpoints
     parser.add_argument("--eval_steps", type=int, default=-1)

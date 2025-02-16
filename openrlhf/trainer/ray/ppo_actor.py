@@ -29,6 +29,7 @@ class ActorPPOTrainer(PPOTrainer):
         vllm_engines: List = None,
         remote_rm_url: List[str] = None,
         critic_train_remote: bool = False,
+        grammar=None,
         **kwargs,
     ):
         """PPOTrainer for ray.
@@ -55,6 +56,7 @@ class ActorPPOTrainer(PPOTrainer):
             self.reward_fn,
             vllm_engines=self.vllm_engines,
             packing_samples=self.strategy.args.packing_samples,
+            grammar=grammar,
         )
 
         backend = getattr(self.strategy.args, "vllm_sync_backend", "nccl")
@@ -268,8 +270,9 @@ class ActorPPOTrainer(PPOTrainer):
 
 @ray.remote(num_gpus=1)
 class ActorModelRayActor(BasePPORole):
-    def init_model_from_pretrained(self, strategy: DeepspeedStrategy, pretrain):
+    def init_model_from_pretrained(self, strategy: DeepspeedStrategy, pretrain, grammar=None):
         args = strategy.args
+        self.grammar = grammar
 
         if getattr(args, "vllm_num_engines", 0) > 0:
             # To prevent hanging during NCCL synchronization of weights between DeepSpeed and vLLM.
@@ -476,6 +479,7 @@ class ActorModelRayActor(BasePPORole):
             eos_token_id=self.tokenizer.eos_token_id,
             save_hf_ckpt=args.save_hf_ckpt,
             disable_ds_ckpt=args.disable_ds_ckpt,
+            grammar=self.grammar,
         )
 
         # broadcast checkpoint

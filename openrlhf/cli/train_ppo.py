@@ -11,12 +11,35 @@ from openrlhf.datasets import PromptDataset, SFTDataset
 from openrlhf.models import Actor, get_llm_for_sequence_regression
 from openrlhf.trainer import PPOTrainer
 from openrlhf.utils import blending_datasets, get_strategy, get_tokenizer
+from transformers import AutoTokenizer
+import xgrammar as xgr
 
 
 def train(args):
     # configure strategy
     strategy = get_strategy(args)
     strategy.setup_distributed()
+
+    if args.grammar_file:
+        with open(args.grammar_file, "r") as f:
+            grammar = f.read()
+        tokenizer = AutoTokenizer.from_pretrained(args.pretrain)
+        tokenizer_info = xgr.TokenizerInfo.from_huggingface(tokenizer, vocab_size=len(tokenizer))
+        grammar_compiler = xgr.GrammarCompiler(tokenizer_info)
+        compiled_grammar = grammar_compiler.compile_grammar(grammar)
+        # xgr_logits_processor = [xgr.contrib.hf.LogitsProcessor(compiled_grammar)]
+        class DebugXGrammarLogitsProcessor(xgr.contrib.hf.LogitsProcessor):
+            def __call__(self, input_ids, scores):
+                sampled_token = scores.argmax().item()
+                print(f"-----------------------------------sampled_token: {sampled_token} {tokenizer.decode(sampled_token)}--------------------------------")
+                # if not self.matchers[0].accept_token(sampled_token):
+                #     print(f"⚠️ Invalid Token: {sampled_token}")
+                #     print(f"Input so far: {input_ids}")
+                #     raise ValueError(f"Token {sampled_token} is not allowed by grammar")
+                return super().__call__(input_ids, scores)
+        xgr_logits_processor = [DebugXGrammarLogitsProcessor(compiled_grammar)]
+    else:
+        grammar = None
 
     # configure model
     # load huggingface model
@@ -30,6 +53,7 @@ def train(args):
         target_modules=args.target_modules,
         lora_dropout=args.lora_dropout,
         ds_config=strategy.get_ds_train_config(is_actor=True),
+        logits_processor=xgr_logits_processor,
     )
 
     if args.actor_init_on_gpu:
@@ -359,6 +383,9 @@ if __name__ == "__main__":
     parser.add_argument("--overlap_comm", action="store_true", default=False)
     parser.add_argument("--gradient_checkpointing_use_reentrant", action="store_true", default=False)
     parser.add_argument("--disable_fast_tokenizer", action="store_true", default=False)
+
+    #Generation
+    parser.add_argument("--grammar_file", type=str, default=None, help="grammar file for guided decoding")
 
     # Reinforce
     parser.add_argument(
