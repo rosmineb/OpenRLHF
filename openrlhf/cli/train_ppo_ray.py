@@ -159,7 +159,6 @@ def train(args):
     if args.grammar_file:
         with open(args.grammar_file, "r") as f:
             grammar = f.read()
-        lark.Lark(grammar)
     else:
         grammar = None
 
